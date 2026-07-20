@@ -37,14 +37,14 @@ world = []
 
 # Define brick types
 # Added direction-specific reflection bricks for the paddle
-class BRICKTYPE:
+class BrickType:
     REFLECTIVE = 0
     DESTRUCTABLE = 1
     REFLECT_UP = 2
     REFLECT_UP_LEFT = 3
     REFLECT_UP_RIGHT = 4
 
-class ONOFF:
+class OnOff:
     ON = 1
     OFF = 0
 
@@ -60,10 +60,10 @@ class Brick:
         self.brick_type = brick_type
         # If hits_remaining > 1, the brick requires multiple hits to clear
         self.hits_remaining = hits_remaining
-        self.onoff = ONOFF.ON
+        self.onoff = OnOff.ON
 
-    def drawBrick(self):
-        if self.onoff == ONOFF.ON:
+    def draw_brick(self):
+        if self.onoff == OnOff.ON:
             halfside = self.width / 2
 
             glColor3d(self.red, self.green, self.blue)
@@ -85,27 +85,27 @@ class Circle:
         self.green = green
         self.blue = blue
         self.speed = 0.01
-        # 1=up 2=right 3=down 4=left 5 = up right
-        # 6 = up left  7 = down right  8= down left
+        # 1 = up, 2 = right, 3 = down, 4 = left, 5 = up + right
+        # 6 = up + left, 7 = down + right, 8 = down + left
         self.direction = direction
 
-        self.onoff = ONOFF.ON
+        self.onoff = OnOff.ON
 
     # Check collision for bricks
-    def CheckCollisionBrick(self, brk):
+    def check_collision_brick(self, brk):
         global score
         
         # If the circle or brick is off, don't check for collision
-        if (self.onoff == ONOFF.OFF or brk.onoff == ONOFF.OFF):
+        if (self.onoff == OnOff.OFF or brk.onoff == OnOff.OFF):
             return
 
-        if brk.brick_type == BRICKTYPE.REFLECTIVE:
+        if brk.brick_type == BrickType.REFLECTIVE:
             if ((self.x > brk.x - brk.width
                 and self.x <= brk.x + brk.width)
                 and (self.y > brk.y - brk.width
                 and self.y <= brk.y + brk.width)):
 
-                self.direction = self.GetRandomDirection()
+                self.direction = self.get_random_direction()
 
                 # Adding direction-based offsets to move the ball slightly
                 # above the paddle so it does not get stuck
@@ -134,19 +134,19 @@ class Circle:
                 if (brk.blue > 1.0):
                     brk.blue = 0.0
         
-        elif (brk.brick_type == BRICKTYPE.DESTRUCTABLE):
+        elif (brk.brick_type == BrickType.DESTRUCTABLE):
             if ((self.x > brk.x - brk.width
                  and self.x <= brk.x + brk.width)
                 and (self.y > brk.y - brk.width
                      and self.y <= brk.y + brk.width)):
 
                 # Reflect balls after hitting destructible bricks
-                self.direction = self.GetRandomDirection()
+                self.direction = self.get_random_direction()
                 # Decrement the hits remaining for the destructible brick
                 brk.hits_remaining -= 1
 
                 if brk.hits_remaining <= 0:
-                    brk.onoff = ONOFF.OFF
+                    brk.onoff = OnOff.OFF
                     # Increment score when a destructible brick is destroyed
                     score += 100
                 else:
@@ -167,20 +167,20 @@ class Circle:
                     # but not destroyed
                     score += 20
 
-        elif (brk.brick_type == BRICKTYPE.REFLECT_UP
-              or brk.brick_type == BRICKTYPE.REFLECT_UP_LEFT
-              or brk.brick_type == BRICKTYPE.REFLECT_UP_RIGHT):
+        elif (brk.brick_type == BrickType.REFLECT_UP
+              or brk.brick_type == BrickType.REFLECT_UP_LEFT
+              or brk.brick_type == BrickType.REFLECT_UP_RIGHT):
 
             if ((self.x > brk.x - brk.width
                  and self.x <= brk.x + brk.width) 
                 and (self.y > brk.y - brk.width
                     and self.y <= brk.y + brk.width)):
 
-                if (brk.brick_type == BRICKTYPE.REFLECT_UP):
+                if (brk.brick_type == BrickType.REFLECT_UP):
                     self.direction = 1
-                elif (brk.brick_type == BRICKTYPE.REFLECT_UP_LEFT):
+                elif (brk.brick_type == BrickType.REFLECT_UP_LEFT):
                     self.direction = 6
-                elif (brk.brick_type == BRICKTYPE.REFLECT_UP_RIGHT):
+                elif (brk.brick_type == BrickType.REFLECT_UP_RIGHT):
                     self.direction = 5
 
                 # Move the ball slightly above the paddle
@@ -189,11 +189,11 @@ class Circle:
                 # https://learnopengl.com/In-Practice/2D-Game/Collisions/Collision-resolution
                 self.y = brk.y + brk.width + 0.01
     
-    # Check collision for circles/ballsreq
-    def CheckCollisionCircle(self, circle):
+    # Check collision for circles/balls
+    def check_collision_circle(self, circle):
         # If the circle is off, don't check for collision
         # between circle and circle
-        if self.onoff == ONOFF.OFF:
+        if self.onoff == OnOff.OFF:
             return
 
         # Function in a similar way as the destructable brick
@@ -203,27 +203,27 @@ class Circle:
                  and self.y <= circle.y + circle.radius)):
 
             # Disable the circle on collision, so it disappears
-            self.onoff = ONOFF.OFF
+            self.onoff = OnOff.OFF
 
             # Disable the other circle on collision, so it disappears
-            circle.onoff = ONOFF.OFF
+            circle.onoff = OnOff.OFF
 
-    def GetRandomDirection(self):
+    def get_random_direction(self):
         return random.randint(1, 8)
 
     # NOTE: The original directions here seemed to be flipped,
     # causing balls to go in the wrong direction
     # So, I flipped several items in this function to
     # make the ball go up when it should
-    def MoveOneStep(self):
+    def move_one_step(self):
         global lives, can_launch, current_state
 
         # If the circle is off, don't move the circle
-        if self.onoff == ONOFF.OFF:
+        if self.onoff == OnOff.OFF:
             return
 
         # Friction modifier to slow down as it hits things
-        frictionMod = 0.5
+        friction_mod = 0.5
 
         # Move up
         if self.direction == 1 or self.direction == 5 or self.direction == 6:
@@ -232,42 +232,42 @@ class Circle:
                 # Flipped to go up instead
                 self.y += self.speed
             else:
-                self.direction = self.GetRandomDirection()
+                self.direction = self.get_random_direction()
                 
                 # Ensure the speed never goes below 0, so it always moves
                 if self.speed < 0.001:
                     self.speed = 0.001
                 else:
                     # Apply friction to slow down the ball
-                    self.speed *= frictionMod
+                    self.speed *= friction_mod
 
         # Move right
         if self.direction == 2 or self.direction == 5 or self.direction == 7:
             if (self.x < 1 - self.radius):
                 self.x += self.speed
             else:
-                self.direction = self.GetRandomDirection()
+                self.direction = self.get_random_direction()
                 
                 # Ensure the speed never goes below 0, so it always moves
                 if self.speed < 0.001:
                     self.speed = 0.001
                 else:
                     # Apply friction to slow down the ball
-                    self.speed *= frictionMod
+                    self.speed *= friction_mod
 
         # Move left
         if self.direction == 4 or self.direction == 6 or self.direction == 8:
             if (self.x > -1 + self.radius):
                 self.x -= self.speed
             else:
-                self.direction = self.GetRandomDirection()
+                self.direction = self.get_random_direction()
                 
                 # Ensure the speed never goes below 0, so it always moves
                 if self.speed < 0.001:
                     self.speed = 0.001
                 else:
                     # Apply friction to slow down the ball
-                    self.speed *= frictionMod
+                    self.speed *= friction_mod
 
         # Move down
         if self.direction == 3 or self.direction == 7 or self.direction == 8:
@@ -276,7 +276,7 @@ class Circle:
             else:
                 # When the circle/ball touches the bottom of the screen
                 # A life is lost and the ball is disabled
-                self.onoff = ONOFF.OFF
+                self.onoff = OnOff.OFF
                 lives -= 1
 
                 # If the player has no lives left, return to the main menu
@@ -286,19 +286,19 @@ class Circle:
                 else:
                     can_launch = True
 
-    def DrawCircle(self):
+    def draw_circle(self):
         # Only render the circle if it is "on" (not destroyed)
-        if (self.onoff == ONOFF.ON):
+        if (self.onoff == OnOff.ON):
             glColor3f(self.red, self.green, self.blue)
             glBegin(GL_POLYGON)
             for i in range(360):
-                degInRad = i * DEG2RAD
-                glVertex2f((math.cos(degInRad) * self.radius) + self.x,
-                           (math.sin(degInRad) * self.radius) + self.y)
+                deg_in_rad = i * DEG2RAD
+                glVertex2f((math.cos(deg_in_rad) * self.radius) + self.x,
+                           (math.sin(deg_in_rad) * self.radius) + self.y)
 
             glEnd()
 
-def LoadLevel(level):
+def load_level(level):
     global active_bricks, world, can_launch, current_state
     active_bricks.clear()
     world.clear()
@@ -312,76 +312,76 @@ def LoadLevel(level):
         # and the last is the number of hits required to destroy the brick
 
         # Smiley face eyes
-        active_bricks.append(Brick(BRICKTYPE.REFLECTIVE, -0.4, 0.6, 0.3, 0.22, 0.72, 0.22, 3))
-        active_bricks.append(Brick(BRICKTYPE.REFLECTIVE, 0.4, 0.6, 0.3, 0.22, 0.72, 0.22, 3))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, -0.4, 0.6, 0.3, 0.22, 0.72, 0.22, 2))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, 0.4, 0.6, 0.3, 0.22, 0.72, 0.22, 2))
 
         # Smiley face mouth
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, -0.6, -0.1, 0.2, 0.96, 0.68, 0.75, 1))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, -0.4, -0.3, 0.2, 0.96, 0.68, 0.75, 1))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, -0.2, -0.5, 0.2, 0.96, 0.68, 0.75, 1))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, 0, -0.5, 0.2, 0.96, 0.68, 0.75, 1))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, 0.2, -0.5, 0.2, 0.96, 0.68, 0.75, 1))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, 0.4, -0.3, 0.2, 0.96, 0.68, 0.75, 1))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, 0.6, -0.1, 0.2, 0.96, 0.68, 0.75, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, -0.6, -0.1, 0.2, 0.96, 0.68, 0.75, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, -0.4, -0.3, 0.2, 0.96, 0.68, 0.75, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, -0.2, -0.5, 0.2, 0.96, 0.68, 0.75, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, 0, -0.5, 0.2, 0.96, 0.68, 0.75, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, 0.2, -0.5, 0.2, 0.96, 0.68, 0.75, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, 0.4, -0.3, 0.2, 0.96, 0.68, 0.75, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, 0.6, -0.1, 0.2, 0.96, 0.68, 0.75, 1))
 
         # Smiley face nose
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, 0, 0.2, 0.1, 0.99, 0.95, 0.77, 1))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, -0.1, 0.1, 0.1, 0.99, 0.95, 0.77, 1))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, -0.2, 0, 0.1, 0.99, 0.95, 0.77, 1))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, -0.1, -0.1, 0.1, 0.99, 0.95, 0.77, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, 0, 0.2, 0.1, 0.99, 0.95, 0.77, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, -0.1, 0.1, 0.1, 0.99, 0.95, 0.77, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, -0.2, 0, 0.1, 0.99, 0.95, 0.77, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, -0.1, -0.1, 0.1, 0.99, 0.95, 0.77, 1))
 
         # Corner bricks
-        active_bricks.append(Brick(BRICKTYPE.REFLECTIVE, -0.95, 0.95, 0.1, 0.72, 0, 1, 1))
-        active_bricks.append(Brick(BRICKTYPE.REFLECTIVE, 0.95, 0.95, 0.1, 0.1, 0.23, 0.97, 1))
-        active_bricks.append(Brick(BRICKTYPE.REFLECTIVE, -0.95, -0.95, 0.1, 0.11, 0.7, 0.36, 1))
-        active_bricks.append(Brick(BRICKTYPE.REFLECTIVE, 0.95, -0.95, 0.1, 1, 1, 0, 1))
+        active_bricks.append(Brick(BrickType.REFLECTIVE, -0.95, 0.95, 0.1, 0.72, 0, 1, 1))
+        active_bricks.append(Brick(BrickType.REFLECTIVE, 0.95, 0.95, 0.1, 0.1, 0.23, 0.97, 1))
+        active_bricks.append(Brick(BrickType.REFLECTIVE, -0.95, -0.95, 0.1, 0.11, 0.7, 0.36, 1))
+        active_bricks.append(Brick(BrickType.REFLECTIVE, 0.95, -0.95, 0.1, 1, 1, 0, 1))
 
     elif level == 2:
         # Two rows of bricks
         # The first row requires 2 hit to destroy
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, -0.4, 0.1, 0.2, 0.22, 0.72, 0.22, 2))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, 0.0, 0.1, 0.2, 0.22, 0.72, 0.22, 2))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, 0.4, 0.1, 0.2, 0.22, 0.72, 0.22, 2))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, -0.4, 0.1, 0.2, 0.22, 0.72, 0.22, 2))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, 0.0, 0.1, 0.2, 0.22, 0.72, 0.22, 2))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, 0.4, 0.1, 0.2, 0.22, 0.72, 0.22, 2))
 
         # The second row requires 3 hits to destroy
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, -0.6, 0.4, 0.2, 0.96, 0.68, 0.75, 3))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, -0.2, 0.4, 0.2, 0.96, 0.68, 0.75, 3))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, 0.2, 0.4, 0.2, 0.96, 0.68, 0.75, 3))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, 0.6, 0.4, 0.2, 0.96, 0.68, 0.75, 3))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, -0.6, 0.4, 0.2, 0.96, 0.68, 0.75, 3))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, -0.2, 0.4, 0.2, 0.96, 0.68, 0.75, 3))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, 0.2, 0.4, 0.2, 0.96, 0.68, 0.75, 3))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, 0.6, 0.4, 0.2, 0.96, 0.68, 0.75, 3))
 
         # Corner bricks
-        active_bricks.append(Brick(BRICKTYPE.REFLECTIVE, -0.95, 0.95, 0.1, 0.72, 0, 1, 1))
-        active_bricks.append(Brick(BRICKTYPE.REFLECTIVE, 0.95, 0.95, 0.1, 0.1, 0.23, 0.97, 1))
-        active_bricks.append(Brick(BRICKTYPE.REFLECTIVE, -0.95, -0.95, 0.1, 0.11, 0.7, 0.36, 1))
-        active_bricks.append(Brick(BRICKTYPE.REFLECTIVE, 0.95, -0.95, 0.1, 1, 1, 0, 1))
+        active_bricks.append(Brick(BrickType.REFLECTIVE, -0.95, 0.95, 0.1, 0.72, 0, 1, 1))
+        active_bricks.append(Brick(BrickType.REFLECTIVE, 0.95, 0.95, 0.1, 0.1, 0.23, 0.97, 1))
+        active_bricks.append(Brick(BrickType.REFLECTIVE, -0.95, -0.95, 0.1, 0.11, 0.7, 0.36, 1))
+        active_bricks.append(Brick(BrickType.REFLECTIVE, 0.95, -0.95, 0.1, 1, 1, 0, 1))
 
     elif level == 3:
         # Frowny face pattern of bricks
 
         # Frowny face eyes
-        active_bricks.append(Brick(BRICKTYPE.REFLECTIVE, -0.4, 0.6, 0.3, 0.22, 0.72, 0.22, 3))
-        active_bricks.append(Brick(BRICKTYPE.REFLECTIVE, 0.4, 0.6, 0.3, 0.22, 0.72, 0.22, 3))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, -0.4, 0.6, 0.3, 0.22, 0.72, 0.22, 3))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, 0.4, 0.6, 0.3, 0.22, 0.72, 0.22, 3))
 
         # Frowny face mouth
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, -0.6, -0.6, 0.2, 0.96, 0.68, 0.75, 1))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, -0.4, -0.4, 0.2, 0.96, 0.68, 0.75, 1))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, -0.2, -0.2, 0.2, 0.96, 0.68, 0.75, 1))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, 0,    -0.2, 0.2, 0.96, 0.68, 0.75, 1))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, 0.2,  -0.2, 0.2, 0.96, 0.68, 0.75, 1))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, 0.4,  -0.4, 0.2, 0.96, 0.68, 0.75, 1))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, 0.6,  -0.6, 0.2, 0.96, 0.68, 0.75, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, -0.6, -0.6, 0.2, 0.96, 0.68, 0.75, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, -0.4, -0.4, 0.2, 0.96, 0.68, 0.75, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, -0.2, -0.2, 0.2, 0.96, 0.68, 0.75, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, 0,    -0.2, 0.2, 0.96, 0.68, 0.75, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, 0.2,  -0.2, 0.2, 0.96, 0.68, 0.75, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, 0.4,  -0.4, 0.2, 0.96, 0.68, 0.75, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, 0.6,  -0.6, 0.2, 0.96, 0.68, 0.75, 1))
 
         # Frowny face nose
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, 0, 0.4, 0.1, 0.99, 0.95, 0.77, 1))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, -0.1, 0.3, 0.1, 0.99, 0.95, 0.77, 1))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, -0.2, 0.2, 0.1, 0.99, 0.95, 0.77, 1))
-        active_bricks.append(Brick(BRICKTYPE.DESTRUCTABLE, -0.1, 0.1, 0.1, 0.99, 0.95, 0.77, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, 0, 0.4, 0.1, 0.99, 0.95, 0.77, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, -0.1, 0.3, 0.1, 0.99, 0.95, 0.77, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, -0.2, 0.2, 0.1, 0.99, 0.95, 0.77, 1))
+        active_bricks.append(Brick(BrickType.DESTRUCTABLE, -0.1, 0.1, 0.1, 0.99, 0.95, 0.77, 1))
 
         # Corner bricks
-        active_bricks.append(Brick(BRICKTYPE.REFLECTIVE, -0.95, 0.95, 0.1, 0.72, 0, 1, 1))
-        active_bricks.append(Brick(BRICKTYPE.REFLECTIVE, 0.95, 0.95, 0.1, 0.1, 0.23, 0.97, 1))
-        active_bricks.append(Brick(BRICKTYPE.REFLECTIVE, -0.95, -0.95, 0.1, 0.11, 0.7, 0.36, 1))
-        active_bricks.append(Brick(BRICKTYPE.REFLECTIVE, 0.95, -0.95, 0.1, 1, 1, 0, 1))
+        active_bricks.append(Brick(BrickType.REFLECTIVE, -0.95, 0.95, 0.1, 0.72, 0, 1, 1))
+        active_bricks.append(Brick(BrickType.REFLECTIVE, 0.95, 0.95, 0.1, 0.1, 0.23, 0.97, 1))
+        active_bricks.append(Brick(BrickType.REFLECTIVE, -0.95, -0.95, 0.1, 0.11, 0.7, 0.36, 1))
+        active_bricks.append(Brick(BrickType.REFLECTIVE, 0.95, -0.95, 0.1, 1, 1, 0, 1))
 
     else:
         # The player completed the final level. Return to the menu.
@@ -390,9 +390,9 @@ def LoadLevel(level):
 # Define a paddle using the brick as the base
 # Defining it in parts so we can affect collision direction
 # based on where the ball hits the paddle
-paddle_center = Brick(BRICKTYPE.REFLECT_UP, 0, -0.9, 0.1, 1, 0, 0, 1)
-paddle_left = Brick(BRICKTYPE.REFLECT_UP_LEFT, -0.1, -0.9, 0.1, 1, 0, 0, 1)
-paddle_right = Brick(BRICKTYPE.REFLECT_UP_RIGHT, 0.1, -0.9, 0.1, 1, 0, 0, 1)
+paddle_center = Brick(BrickType.REFLECT_UP, 0, -0.9, 0.1, 1, 0, 0, 1)
+paddle_left = Brick(BrickType.REFLECT_UP_LEFT, -0.1, -0.9, 0.1, 1, 0, 0, 1)
+paddle_right = Brick(BrickType.REFLECT_UP_RIGHT, 0.1, -0.9, 0.1, 1, 0, 0, 1)
 
 def main():
     random.seed(time.time())
@@ -437,7 +437,7 @@ def main():
                 score = 0
                 lives = 5
                 current_level = 1
-                LoadLevel(current_level)
+                load_level(current_level)
                 current_state = "PLAYING"
             
             if imgui.button("High Scores"):
@@ -467,47 +467,47 @@ def main():
             imgui.text(f"Score: {score} | Lives: {lives} | Level: {current_level}")
             imgui.end()
 
-            processInput(window)
+            process_input(window)
 
             # Check progress for level completion
             bricks_remaining = 0
             for brick in active_bricks:
                 # Only count bricks that are still "on" (not destroyed)
                 # and bricks that are destructible
-                if brick.onoff == ONOFF.ON and brick.brick_type == BRICKTYPE.DESTRUCTABLE:
+                if brick.onoff == OnOff.ON and brick.brick_type == BrickType.DESTRUCTABLE:
                     bricks_remaining += 1
 
             # If all destructible bricks are destroyed, advance to the next level
             if bricks_remaining == 0:
                 current_level += 1
-                LoadLevel(current_level)
+                load_level(current_level)
 
             # Movement
             for i in range(len(world)):
                 # Check collision on circles/balls
                 for j in range(i + 1, len(world)):
-                    world[i].CheckCollisionCircle(world[j])
+                    world[i].check_collision_circle(world[j])
             
                 # Check collision on bricks
                 for brick in active_bricks:
-                    world[i].CheckCollisionBrick(brick)
+                    world[i].check_collision_brick(brick)
                 
                 # Check collision on the parts of the paddle
-                world[i].CheckCollisionBrick(paddle_center)
-                world[i].CheckCollisionBrick(paddle_left)
-                world[i].CheckCollisionBrick(paddle_right)
+                world[i].check_collision_brick(paddle_center)
+                world[i].check_collision_brick(paddle_left)
+                world[i].check_collision_brick(paddle_right)
                 
-                world[i].MoveOneStep()
-                world[i].DrawCircle()
+                world[i].move_one_step()
+                world[i].draw_circle()
 
             # Draw bricks
             for brick in active_bricks:
-                brick.drawBrick()
+                brick.draw_brick()
 
             # Draw the paddle parts
-            paddle_center.drawBrick()
-            paddle_left.drawBrick()
-            paddle_right.drawBrick()
+            paddle_center.draw_brick()
+            paddle_left.draw_brick()
+            paddle_right.draw_brick()
 
         # Render ImGui GUI elements
         imgui.render()
@@ -528,7 +528,7 @@ def main():
     exit(0)
 
 # Process keyboard input in the game window
-def processInput(window):
+def process_input(window):
     global can_launch
     
     if glfw.get_key(window, glfw.KEY_ESCAPE) == glfw.PRESS:
@@ -543,9 +543,9 @@ def processInput(window):
             b = random.random()
 
             # Create a new ball above the center of the paddle
-            B = Circle(paddle_center.x,
-                       paddle_center.y + 0.1, 0.05, 1, r, g, b)
-            world.append(B)
+            ball = Circle(paddle_center.x,
+                          paddle_center.y + 0.1, 0.05, 1, r, g, b)
+            world.append(ball)
 
             # Set can_launch to false because we just launched a ball
             can_launch = False
