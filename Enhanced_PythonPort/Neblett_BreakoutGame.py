@@ -19,6 +19,7 @@ import sys
 import random
 import math
 import time
+import datetime
 
 DEG2RAD = 3.14159 / 180
 
@@ -40,9 +41,6 @@ world = []
 class BrickType:
     REFLECTIVE = 0
     DESTRUCTABLE = 1
-    REFLECT_UP = 2
-    REFLECT_UP_LEFT = 3
-    REFLECT_UP_RIGHT = 4
 
 class OnOff:
     ON = 1
@@ -50,13 +48,13 @@ class OnOff:
 
 # Define the Brick class to represent each brick in the game
 class Brick:
-    def __init__(self, brick_type, xx, yy, ww, red, green, blue, hits_remaining):
+    def __init__(self, brick_type, pos_x, pos_y, width, red, green, blue, hits_remaining):
         self.red = red
         self.green = green
         self.blue = blue
-        self.x = xx
-        self.y = yy
-        self.width = ww
+        self.x = pos_x
+        self.y = pos_y
+        self.width = width
         self.brick_type = brick_type
         # If hits_remaining > 1, the brick requires multiple hits to clear
         self.hits_remaining = hits_remaining
@@ -64,230 +62,274 @@ class Brick:
 
     def draw_brick(self):
         if self.onoff == OnOff.ON:
-            halfside = self.width / 2
+            half_size = self.width / 2
 
             glColor3d(self.red, self.green, self.blue)
             glBegin(GL_POLYGON)
 
-            glVertex2d(self.x + halfside, self.y + halfside)
-            glVertex2d(self.x + halfside, self.y - halfside)
-            glVertex2d(self.x - halfside, self.y - halfside)
-            glVertex2d(self.x - halfside, self.y + halfside)
+            glVertex2d(self.x + half_size, self.y + half_size)
+            glVertex2d(self.x + half_size, self.y - half_size)
+            glVertex2d(self.x - half_size, self.y - half_size)
+            glVertex2d(self.x - half_size, self.y + half_size)
 
             glEnd()
 
-class Circle:
-    def __init__(self, xx, yy, radius, direction, red, green, blue):
-        self.x = xx
-        self.y = yy
+# Define the Paddle class
+class Paddle:
+    def __init__(self, pos_x, pos_y):
+        self.x = pos_x
+        self.y = pos_y
+        # The paddle size and color will not change, so define those here
+        self.width = 0.4
+        self.height = 0.1
+        self.onoff = OnOff.ON
+
+    def draw_paddle(self):
+        glColor3d(1, 0, 0)
+        glBegin(GL_POLYGON)
+
+        glVertex2d(self.x + self.width / 2, self.y + self.height / 2)
+        glVertex2d(self.x + self.width / 2, self.y - self.height / 2)
+        glVertex2d(self.x - self.width / 2, self.y - self.height / 2)
+        glVertex2d(self.x - self.width / 2, self.y + self.height / 2)
+
+        glEnd()
+
+class Ball:
+    def __init__(self, pos_x, pos_y, radius, velocity_x, velocity_y, red, green, blue):
+        self.x = pos_x
+        self.y = pos_y
         self.radius = radius
         self.red = red
         self.green = green
         self.blue = blue
-        self.speed = 0.01
-        # 1 = up, 2 = right, 3 = down, 4 = left, 5 = up + right
-        # 6 = up + left, 7 = down + right, 8 = down + left
-        self.direction = direction
+        # Replace old direction logic with velocity
+        self.velocity_x = velocity_x
+        self.velocity_y = velocity_y
 
         self.onoff = OnOff.ON
 
-    # Check collision for bricks
-    def check_collision_brick(self, brk):
-        global score
-        
-        # If the circle or brick is off, don't check for collision
-        if (self.onoff == OnOff.OFF or brk.onoff == OnOff.OFF):
+    # Check collision with bricks and paddles using AABB
+    def check_collision(self, obj):
+
+        # Check if the passed obj is a brick or a paddle
+        # The ball can collide with both, both use AABB collision detection
+        isbrick = isinstance(obj, Brick)
+        ispaddle = isinstance(obj, Paddle)
+
+        # If the ball or brick is off, don't check for collision
+        if (self.onoff == OnOff.OFF or obj.onoff == OnOff.OFF):
             return
 
-        if brk.brick_type == BrickType.REFLECTIVE:
-            if ((self.x > brk.x - brk.width
-                and self.x <= brk.x + brk.width)
-                and (self.y > brk.y - brk.width
-                and self.y <= brk.y + brk.width)):
+        # Define a bounding box for the ball for AABB collision detection
+        half_width = obj.width / 2
+        if isbrick:
+            # Bricks are square and have no height component
+            half_height = half_width
+        elif ispaddle:
+            half_height = obj.height / 2
 
-                self.direction = self.get_random_direction()
+        min_x = obj.x - half_width
+        max_x = obj.x + half_width
+        min_y = obj.y - half_height
+        max_y = obj.y + half_height
 
-                # Adding direction-based offsets to move the ball slightly
-                # above the paddle so it does not get stuck
-                # "Sticky paddle" issue referenced here:
-                # https://learnopengl.com/In-Practice/2D-Game/Collisions/Collision-resolution
-                if self.x < brk.x:
-                    self.x -= 0.02
-                else:
-                    self.x += 0.02
-                
-                if self.y < brk.y:
-                    self.y -= 0.02
-                else:
-                    self.y += 0.02
+        # Find the closest points on X and Y
+        # AABB closest point reference adapted from:
+        # https://learnopengl.com/In-Practice/2D-Game/Collisions/Collision-detection
+        closest_x = max(min_x, min(self.x, max_x))
+        closest_y = max(min_y, min(self.y, max_y))
 
-                # Increment the color of the brick by 0.1 for each color channel
-                brk.red += 0.1
-                brk.green += 0.1
-                brk.blue += 0.1
+        # Find the distance between the ball's center and this closest point
+        distance_x = self.x - closest_x
+        distance_y = self.y - closest_y
+
+        # Calculate the distance length using the Pythagorean theorem
+        # Translated from C++ OpenGL glm::length() from:
+        # https://learnopengl.com/In-Practice/2D-Game/Collisions/Collision-detection
+        distance_length = math.sqrt((distance_x ** 2) + (distance_y ** 2))
+        
+        # Check if the distance is less than the ball's radius
+        # to determine collision events
+        if (distance_length < self.radius):
+            # Safety check so we don't divide by zero
+            if distance_length == 0:
+                distance_length = 0.001
+
+            # If the collision is with a brick
+            if isbrick:
+                self.brick_collision(obj,
+                                     distance_length,
+                                     distance_x,
+                                     distance_y)
+            # If the collision is with a paddle
+            elif ispaddle:
+                 self.paddle_collision(obj,
+                                       half_width,
+                                       half_height)
+    
+    # Collision event with a brick
+    def brick_collision(self, obj, distance_length, distance_x, distance_y):
+        global score
+
+        # Normalize the distance vector to get the collision normal
+        # Collision resolution concepts adapted from:
+        # https://learnopengl.com/In-Practice/2D-Game/Collisions/Collision-resolution
+        normal_x = distance_x / distance_length
+        normal_y = distance_y / distance_length
+
+        # Reflect the ball's direction based on the collision normal
+        # Reflection vector math adapted from:
+        # https://math.stackexchange.com/questions/13261/how-to-get-a-reflection-vector
+        dot_product = (self.velocity_x * normal_x) + (self.velocity_y * normal_y)
+
+        # Update the ball's velocity based on the reflection formula
+        self.velocity_x = self.velocity_x - (2 * dot_product * normal_x)
+        self.velocity_y = self.velocity_y - (2 * dot_product * normal_y)
+
+        # Adding direction-based offsets to move the ball slightly
+        # above the paddle so it does not get stuck
+        # "Sticky paddle" issue referenced here:
+        # https://learnopengl.com/In-Practice/2D-Game/Collisions/Collision-resolution
+        self.x += normal_x * (self.radius - distance_length)
+        self.y += normal_y * (self.radius - distance_length)
+
+        # Check the brick type
+        # Reflective bricks should change color on collision,
+        # but not be destroyed
+        if obj.brick_type == BrickType.REFLECTIVE:
+            # Increment the color of the brick by 0.1 for each color channel
+            obj.red += 0.1
+            obj.green += 0.1
+            obj.blue += 0.1
+
+            # Wrap each color channel around to 0 once it reaches > 1.0
+            if (obj.red > 1.0):
+                obj.red = 0.0
+            if (obj.green > 1.0):
+                obj.green = 0.0
+            if (obj.blue > 1.0):
+                obj.blue = 0.0
+            
+        # Destructable bricks should decrement their hit count
+        # and be destroyed if hits_remaining <= 0
+        elif (obj.brick_type == BrickType.DESTRUCTABLE):
+            # Decrement the hits remaining for the destructible brick
+            obj.hits_remaining -= 1
+
+            if obj.hits_remaining <= 0:
+                obj.onoff = OnOff.OFF
+                # Increment score when a destructible brick is destroyed
+                score += 100
+            else:
+                # Decrement the color of the brick by 0.1
+                # for each color channel
+                obj.red -= 0.1
+                obj.green -= 0.1
+                obj.blue -= 0.1
 
                 # Wrap each color channel around to 0 once it reaches > 1.0
-                if (brk.red > 1.0):
-                    brk.red = 0.0
-                if (brk.green > 1.0):
-                    brk.green = 0.0
-                if (brk.blue > 1.0):
-                    brk.blue = 0.0
-        
-        elif (brk.brick_type == BrickType.DESTRUCTABLE):
-            if ((self.x > brk.x - brk.width
-                 and self.x <= brk.x + brk.width)
-                and (self.y > brk.y - brk.width
-                     and self.y <= brk.y + brk.width)):
-
-                # Reflect balls after hitting destructible bricks
-                self.direction = self.get_random_direction()
-                # Decrement the hits remaining for the destructible brick
-                brk.hits_remaining -= 1
-
-                if brk.hits_remaining <= 0:
-                    brk.onoff = OnOff.OFF
-                    # Increment score when a destructible brick is destroyed
-                    score += 100
-                else:
-                    # Decrement the color of the brick by 0.1 for each color channel
-                    brk.red -= 0.1
-                    brk.green -= 0.1
-                    brk.blue -= 0.1
-
-                    # Wrap each color channel around to 0 once it reaches > 1.0
-                    if (brk.red < 0.0):
-                        brk.red = 1.0
-                    if (brk.green < 0.0):
-                        brk.green = 1.0
-                    if (brk.blue < 0.0):
-                        brk.blue = 1.0
+                if (obj.red < 0.0):
+                    obj.red = 1.0
+                if (obj.green < 0.0):
+                    obj.green = 1.0
+                if (obj.blue < 0.0):
+                    obj.blue = 1.0
                     
-                    # Increment score when a destructible brick is hit
-                    # but not destroyed
-                    score += 20
+                # Increment score when a destructible brick is hit
+                # but not destroyed
+                score += 20
 
-        elif (brk.brick_type == BrickType.REFLECT_UP
-              or brk.brick_type == BrickType.REFLECT_UP_LEFT
-              or brk.brick_type == BrickType.REFLECT_UP_RIGHT):
+    # Collision event with a paddle
+    def paddle_collision(self, obj, half_width, half_height):
+        # Calculate where the ball hit the paddle on the X axis
+        # Used the following as reference for velocity calculation:
+        # https://learnopengl.com/In-Practice/2D-Game/Collisions/Collision-resolution
+        hit_pos_x = (self.x - obj.x) / half_width
 
-            if ((self.x > brk.x - brk.width
-                 and self.x <= brk.x + brk.width) 
-                and (self.y > brk.y - brk.width
-                    and self.y <= brk.y + brk.width)):
+        # Additional strength/speed to add to the ball after a hit
+        velocity_mod = 0.01
+        self.velocity_x = hit_pos_x * velocity_mod
 
-                if (brk.brick_type == BrickType.REFLECT_UP):
-                    self.direction = 1
-                elif (brk.brick_type == BrickType.REFLECT_UP_LEFT):
-                    self.direction = 6
-                elif (brk.brick_type == BrickType.REFLECT_UP_RIGHT):
-                    self.direction = 5
+        # Move the ball slightly above the paddle
+        # so it does not get stuck
+        # "Sticky paddle" issue referenced here:
+        # https://learnopengl.com/In-Practice/2D-Game/Collisions/Collision-resolution
+        self.velocity_y = abs(self.velocity_y)
+        self.y = obj.y + half_height + self.radius
 
-                # Move the ball slightly above the paddle
-                # so it does not get stuck
-                # "Sticky paddle" issue referenced here:
-                # https://learnopengl.com/In-Practice/2D-Game/Collisions/Collision-resolution
-                self.y = brk.y + brk.width + 0.01
-    
-    # Check collision for circles/balls
-    def check_collision_circle(self, circle):
-        # If the circle is off, don't check for collision
-        # between circle and circle
-        if self.onoff == OnOff.OFF:
-            return
-
-        # Function in a similar way as the destructable brick
-        if ((self.x > circle.x - circle.radius
-             and self.x <= circle.x + circle.radius)
-            and (self.y > circle.y - circle.radius
-                 and self.y <= circle.y + circle.radius)):
-
-            # Disable the circle on collision, so it disappears
-            self.onoff = OnOff.OFF
-
-            # Disable the other circle on collision, so it disappears
-            circle.onoff = OnOff.OFF
-
-    def get_random_direction(self):
-        return random.randint(1, 8)
-
-    # NOTE: The original directions here seemed to be flipped,
-    # causing balls to go in the wrong direction
-    # So, I flipped several items in this function to
-    # make the ball go up when it should
+    # Called once per frame to handle movement
     def move_one_step(self):
         global lives, can_launch, current_state
 
-        # If the circle is off, don't move the circle
+        # If the ball is off, don't move the ball
         if self.onoff == OnOff.OFF:
             return
 
+        # Add the new velocity to the X and Y coordinates to move the ball
+        self.x += self.velocity_x
+        self.y += self.velocity_y
+
+        # Minimum velocity so we don't divide by zero
+        # and so the ball never moves too slowly
+        min_velocity = 0.005
+
         # Friction modifier to slow down as it hits things
-        friction_mod = 0.5
+        friction_mod = 0.3
 
-        # Move up
-        if self.direction == 1 or self.direction == 5 or self.direction == 6:
-            # Flipped this to check top bounds
-            if (self.y < 1 - self.radius):
-                # Flipped to go up instead
-                self.y += self.speed
+        # Left bounds collisions
+        if (self.x < -1 + self.radius):
+            self.x = -1 + self.radius
+
+            # Bounce off of the wall and slow down the ball
+            self.velocity_x = (self.velocity_x * -1) * friction_mod
+            
+            # Ensure the velocity never goes below 0, so it always moves
+            if abs(self.velocity_x) < min_velocity:
+                self.velocity_x = min_velocity
+
+        # Right bounds collisions
+        if (self.x > 1 - self.radius):
+            self.x = 1 - self.radius
+
+            # Bounce off of the wall and slow down the ball
+            self.velocity_x = (self.velocity_x * -1) * friction_mod
+            
+            # Ensure the velocity never goes below 0, so it always moves
+            if abs(self.velocity_x) < min_velocity:
+                self.velocity_x = -min_velocity
+
+         # Top bounds collisions
+        if (self.y > 1 - self.radius):
+            self.y = 1 - self.radius
+
+            # Bounce off of the wall and slow down the ball
+            self.velocity_y = (self.velocity_y * -1) * friction_mod
+            
+            # Ensure the velocity never goes below 0, so it always moves
+            if abs(self.velocity_y) < min_velocity:
+                self.velocity_y = -min_velocity
+
+        # Floor bounds collisions
+        if (self.y < -1 + self.radius):
+            # When the ball touches the bottom of the screen
+            # A life is lost and the ball is disabled
+            self.onoff = OnOff.OFF
+            lives -= 1
+
+            # If the player has no lives left, return to the main menu
+            if lives <= 0:
+                # Save the current score and push to the high score database
+                score_db = PlayerScore("Player", score, current_level)
+                score_db.save_to_database()
+
+                current_state = "MENU"
+            # Else, allow the player to launch a new ball
             else:
-                self.direction = self.get_random_direction()
-                
-                # Ensure the speed never goes below 0, so it always moves
-                if self.speed < 0.001:
-                    self.speed = 0.001
-                else:
-                    # Apply friction to slow down the ball
-                    self.speed *= friction_mod
+                can_launch = True
 
-        # Move right
-        if self.direction == 2 or self.direction == 5 or self.direction == 7:
-            if (self.x < 1 - self.radius):
-                self.x += self.speed
-            else:
-                self.direction = self.get_random_direction()
-                
-                # Ensure the speed never goes below 0, so it always moves
-                if self.speed < 0.001:
-                    self.speed = 0.001
-                else:
-                    # Apply friction to slow down the ball
-                    self.speed *= friction_mod
-
-        # Move left
-        if self.direction == 4 or self.direction == 6 or self.direction == 8:
-            if (self.x > -1 + self.radius):
-                self.x -= self.speed
-            else:
-                self.direction = self.get_random_direction()
-                
-                # Ensure the speed never goes below 0, so it always moves
-                if self.speed < 0.001:
-                    self.speed = 0.001
-                else:
-                    # Apply friction to slow down the ball
-                    self.speed *= friction_mod
-
-        # Move down
-        if self.direction == 3 or self.direction == 7 or self.direction == 8:
-            if (self.y > -1 + self.radius):
-                self.y -= self.speed
-            else:
-                # When the circle/ball touches the bottom of the screen
-                # A life is lost and the ball is disabled
-                self.onoff = OnOff.OFF
-                lives -= 1
-
-                # If the player has no lives left, return to the main menu
-                if lives <= 0:
-                    current_state = "MENU"
-                # Else, allow the player to launch a new ball
-                else:
-                    can_launch = True
-
-    def draw_circle(self):
-        # Only render the circle if it is "on" (not destroyed)
+    def draw_ball(self):
+        # Only render the ball if it is "on" (not destroyed)
         if (self.onoff == OnOff.ON):
             glColor3f(self.red, self.green, self.blue)
             glBegin(GL_POLYGON)
@@ -297,6 +339,26 @@ class Circle:
                            (math.sin(deg_in_rad) * self.radius) + self.y)
 
             glEnd()
+
+# Define the data structure for the player score
+# This will be pushed to a MySQL database that holds high scores
+# This will be expanded upon for the Databases enhancement
+class PlayerScore:
+    def __init__(self, player_name, player_score, highest_level):
+        self.id = None
+        self.player_name = player_name
+        self.player_score = player_score
+        self.highest_level = highest_level
+        self.timestamp = None
+
+    def save_to_database(self):
+        # Get the timestamp via datetime
+        self.timestamp = datetime.datetime.now()
+
+        # TODO: push to MySQL database
+        # TODO: sanitize input for security
+
+        print(f"FINAL SCORE | Player Name: {self.player_name}, Score: {self.player_score}, Level: {self.highest_level}, Timestamp: {self.timestamp}")
 
 def load_level(level):
     global active_bricks, world, can_launch, current_state
@@ -385,14 +447,15 @@ def load_level(level):
 
     else:
         # The player completed the final level. Return to the menu.
+
+        # Save the current score and push to the high score database
+        score_db = PlayerScore("Player", score, current_level - 1)
+        score_db.save_to_database()
+
         current_state = "MENU"
 
-# Define a paddle using the brick as the base
-# Defining it in parts so we can affect collision direction
-# based on where the ball hits the paddle
-paddle_center = Brick(BrickType.REFLECT_UP, 0, -0.9, 0.1, 1, 0, 0, 1)
-paddle_left = Brick(BrickType.REFLECT_UP_LEFT, -0.1, -0.9, 0.1, 1, 0, 0, 1)
-paddle_right = Brick(BrickType.REFLECT_UP_RIGHT, 0.1, -0.9, 0.1, 1, 0, 0, 1)
+# Define a paddle for the player to use to launch and reflect balls at position
+paddle = Paddle(0, -0.9)
 
 def main():
     random.seed(time.time())
@@ -437,6 +500,7 @@ def main():
                 score = 0
                 lives = 5
                 current_level = 1
+                paddle.x = 0
                 load_level(current_level)
                 current_state = "PLAYING"
             
@@ -451,7 +515,7 @@ def main():
             
             imgui.end()
 
-        # Menu loop
+        # Game loop
         if current_state == "PLAYING":
             # Render the GUI for the score and lives
             # Used ImGui reference for flags and positioning here:
@@ -474,7 +538,8 @@ def main():
             for brick in active_bricks:
                 # Only count bricks that are still "on" (not destroyed)
                 # and bricks that are destructible
-                if brick.onoff == OnOff.ON and brick.brick_type == BrickType.DESTRUCTABLE:
+                if (brick.onoff == OnOff.ON
+                    and brick.brick_type == BrickType.DESTRUCTABLE):
                     bricks_remaining += 1
 
             # If all destructible bricks are destroyed, advance to the next level
@@ -484,30 +549,22 @@ def main():
 
             # Movement
             for i in range(len(world)):
-                # Check collision on circles/balls
-                for j in range(i + 1, len(world)):
-                    world[i].check_collision_circle(world[j])
-            
                 # Check collision on bricks
                 for brick in active_bricks:
-                    world[i].check_collision_brick(brick)
+                    world[i].check_collision(brick)
                 
-                # Check collision on the parts of the paddle
-                world[i].check_collision_brick(paddle_center)
-                world[i].check_collision_brick(paddle_left)
-                world[i].check_collision_brick(paddle_right)
+                # Check collision on the paddle
+                world[i].check_collision(paddle)
                 
                 world[i].move_one_step()
-                world[i].draw_circle()
+                world[i].draw_ball()
 
             # Draw bricks
             for brick in active_bricks:
                 brick.draw_brick()
 
-            # Draw the paddle parts
-            paddle_center.draw_brick()
-            paddle_left.draw_brick()
-            paddle_right.draw_brick()
+            # Draw the paddle
+            paddle.draw_paddle()
 
         # Render ImGui GUI elements
         imgui.render()
@@ -543,8 +600,8 @@ def process_input(window):
             b = random.random()
 
             # Create a new ball above the center of the paddle
-            ball = Circle(paddle_center.x,
-                          paddle_center.y + 0.1, 0.05, 1, r, g, b)
+            ball = Ball(paddle.x, paddle.y + 0.1,
+                          0.05, 0.0, 0.01, r, g, b)
             world.append(ball)
 
             # Set can_launch to false because we just launched a ball
@@ -554,16 +611,18 @@ def process_input(window):
     # Used https://learnopengl.com/In-Practice/2D-Game/Levels as reference
     if (glfw.get_key(window, glfw.KEY_A) == glfw.PRESS
         or glfw.get_key(window, glfw.KEY_LEFT) == glfw.PRESS):
-        paddle_center.x -= 0.003
-        paddle_left.x -= 0.003
-        paddle_right.x -= 0.003
+        
+        # Only move the paddle if it's on screen
+        if paddle.x > -0.8:
+            paddle.x -= 0.003
 
     # Paddle movement right with D and right arrow key
     if (glfw.get_key(window, glfw.KEY_D) == glfw.PRESS
         or glfw.get_key(window, glfw.KEY_RIGHT) == glfw.PRESS):
-        paddle_center.x += 0.003
-        paddle_left.x += 0.003
-        paddle_right.x += 0.003
+        
+        # Only move the paddle if it's on screen
+        if paddle.x < 0.8:
+            paddle.x += 0.003
 
 
 if __name__ == "__main__":
