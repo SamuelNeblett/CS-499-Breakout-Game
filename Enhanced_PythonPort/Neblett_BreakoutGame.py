@@ -20,10 +20,13 @@ import random
 import math
 import time
 import datetime
+import sqlite3
 
 DEG2RAD = 3.14159 / 180
 
 # Gloabal variables for tracking gameplay
+# Name for the current player, used for high scores
+player_name = "Player"
 # Track the current state of the game
 # "MENU" = main menu, "PLAYING" = in-game
 current_state = "MENU"
@@ -35,6 +38,9 @@ can_launch = True
 current_level = 1
 active_bricks = []
 world = []
+
+# List of high scores fetched from the database
+high_scores = []
 
 # Define brick types
 # Added direction-specific reflection bricks for the paddle
@@ -260,7 +266,7 @@ class Ball:
 
     # Called once per frame to handle movement
     def move_one_step(self):
-        global lives, can_launch, current_state
+        global lives, can_launch, current_state, player_name, score
 
         # If the ball is off, don't move the ball
         if self.onoff == OnOff.OFF:
@@ -320,7 +326,7 @@ class Ball:
             # If the player has no lives left, return to the main menu
             if lives <= 0:
                 # Save the current score and push to the high score database
-                score_db = PlayerScore("Player", score, current_level)
+                score_db = PlayerScore(player_name, score, current_level)
                 score_db.save_to_database()
 
                 current_state = "MENU"
@@ -340,28 +346,8 @@ class Ball:
 
             glEnd()
 
-# Define the data structure for the player score
-# This will be pushed to a MySQL database that holds high scores
-# This will be expanded upon for the Databases enhancement
-class PlayerScore:
-    def __init__(self, player_name, player_score, highest_level):
-        self.id = None
-        self.player_name = player_name
-        self.player_score = player_score
-        self.highest_level = highest_level
-        self.timestamp = None
-
-    def save_to_database(self):
-        # Get the timestamp via datetime
-        self.timestamp = datetime.datetime.now()
-
-        # TODO: push to MySQL database
-        # TODO: sanitize input for security
-
-        print(f"FINAL SCORE | Player Name: {self.player_name}, Score: {self.player_score}, Level: {self.highest_level}, Timestamp: {self.timestamp}")
-
 def load_level(level):
-    global active_bricks, world, can_launch, current_state
+    global active_bricks, world, can_launch, current_state, player_name, score
     active_bricks.clear()
     world.clear()
     can_launch = True
@@ -449,16 +435,152 @@ def load_level(level):
         # The player completed the final level. Return to the menu.
 
         # Save the current score and push to the high score database
-        score_db = PlayerScore("Player", score, current_level - 1)
+        score_db = PlayerScore(player_name, score, current_level - 1)
         score_db.save_to_database()
 
         current_state = "MENU"
+
+# Initialize the SQLite database for high scores
+# Concepts for the creation of the database and table referenced from:
+# https://www.tutorialspoint.com/sqlite/sqlite_python.htm
+def init_database():
+    # Try/except block to catch any database errors, referenced from:
+    # https://www.geeksforgeeks.org/python/how-to-connect-to-sqlite-database-that-resides-in-the-memory-using-python/
+    try:
+        connection = sqlite3.connect("breakout_db.db")
+        cursor = connection.cursor()
+        cursor.execute('''CREATE TABLE IF NOT EXISTS player_scores
+                           (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                           player_name TEXT NOT NULL,
+                           player_score INTEGER NOT NULL,
+                           highest_level INTEGER NOT NULL,
+                           timestamp TEXT NOT NULL);''')
+        connection.commit()
+    except Exception as e:
+        print(f"Database error occurred on initialization: {e}")
+    finally:
+        connection.close()
+
+# Define the data structure for the player score
+# This will be pushed to a MySQL database that holds high scores
+# This will be expanded upon for the Databases enhancement
+class PlayerScore:
+    def __init__(self, player_name, player_score, highest_level):
+        self.id = None
+        self.player_name = player_name
+        self.player_score = player_score
+        self.highest_level = highest_level
+        self.timestamp = None
+
+    def save_to_database(self):
+        # Get the timestamp via datetime
+        self.timestamp = str(datetime.datetime.now())
+
+        # Sanitize the player name to prevent SQL injection
+        # This is for the security mindset capstone requirement
+        # Remove illegal characters from the player name
+        sanitized_name = self.player_name.strip()
+        sanitized_name = sanitized_name.replace("'", "")
+        sanitized_name = sanitized_name.replace('"', "")
+        sanitized_name = sanitized_name.replace(";", "")
+        sanitized_name = sanitized_name.replace("--", "")
+
+        # Attempt to connect to the database
+        try:
+            connection = sqlite3.connect("breakout_db.db")
+            cursor = connection.cursor()
+
+            # Query player_scores table to check if the player already exists
+            # Bind the queried data to ? to prevent SQL injection
+            # "Always use [?] instead of string formatting to bind Python
+            # values to SQL statements, to avoid SQL injection attacks" source:
+            # https://docs.python.org/3/library/sqlite3.html
+            cursor.execute('''SELECT player_score FROM player_scores WHERE player_name = ?''',
+                           (sanitized_name,))
+            existing_score = cursor.fetchone()
+
+            # If no score for the player exists
+            if existing_score is None:
+                # Insert the new player score
+                cursor.execute('''INSERT INTO player_scores (player_name,
+                                                             player_score,
+                                                             highest_level,
+                                                             timestamp)
+                               VALUES (?, ?, ?, ?)''', (sanitized_name,
+                                                        self.player_score,
+                                                        self.highest_level,
+                                                        self.timestamp))
+            # Else if the player already exists in the database
+            # So update their score if it's higher
+            elif self.player_score > existing_score[0]:
+                # Update the existing player score if it's higher
+                cursor.execute('''UPDATE player_scores SET player_score = ?,
+                               highest_level = ?,
+                               timestamp = ? WHERE player_name = ?''',
+                               (self.player_score,
+                                self.highest_level,
+                                self.timestamp,
+                                sanitized_name))
+            
+            connection.commit()
+        except Exception as e:
+            print(f"Database error occurred during save: {e}")
+        finally:
+            connection.close()
+
+        print(f"FINAL SCORE | Player Name: {sanitized_name}, "
+              f"Score: {self.player_score}, "
+              f"Level: {self.highest_level}, "
+              f"Timestamp: {self.timestamp}")
+
+# Fetch the top 10 high scores from the database
+def get_high_scores():
+    scores = []
+    # Attempt to connect to the database
+    try:
+        connection = sqlite3.connect("breakout_db.db")
+        cursor = connection.cursor()
+
+        # Select the top 10 entries in player_score in descending order
+        cursor.execute('''SELECT player_name,
+                       player_score,
+                       highest_level,
+                       timestamp FROM player_scores
+                       ORDER BY player_score DESC LIMIT 10''')
+        scores = cursor.fetchall()
+    except Exception as e:
+        print(f"Database error occurred while fetching high scores: {e}")
+    finally:
+        connection.close()
+    
+    # Return the top 10 high scores
+    return scores
+
+# Delete all high scores from the database
+def delete_all_scores():
+    # Attempt to connect to the database
+    try:
+        connection = sqlite3.connect("breakout_db.db")
+        cursor = connection.cursor()
+
+        # Delete all entries from the player_scores table
+        cursor.execute('''DELETE FROM player_scores''')
+        connection.commit()
+    except Exception as e:
+        print(f"Database error occurred while deleting scores: {e}")
+    finally:
+        connection.close()
 
 # Define a paddle for the player to use to launch and reflect balls at position
 paddle = Paddle(0, -0.9)
 
 def main():
+    global player_name
+
     random.seed(time.time())
+
+    # Initialize the database for high scores
+    init_database()
     
     if not glfw.init():
         # Exit the program if GLFW initialization fails and report error
@@ -466,7 +588,7 @@ def main():
     
     glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 2)
     glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 0)
-    window = glfw.create_window(480, 480,
+    window = glfw.create_window(600, 600,
                                 "Sam's Cool Breakout-like Game", None, None)
     if not window:
         glfw.terminate()
@@ -496,6 +618,32 @@ def main():
         # Menu loop
         if current_state == "MENU":
             imgui.begin("Main Menu")
+            
+            # Go to the name entry screen before starting the game
+            if imgui.button("Start Game"):
+                current_state = "NAME_ENTRY"
+            
+            # Go to the high scores screen
+            if imgui.button("High Scores"):
+                high_scores = get_high_scores()
+                current_state = "HIGH_SCORES"
+
+            # Quit the game
+            if imgui.button("Quit"):
+                glfw.set_window_should_close(window, True)
+            
+            imgui.end()
+
+        # Name entry loop
+        if current_state == "NAME_ENTRY":
+            imgui.begin("Enter Name")
+
+            # Input text field for the player to enter their name
+            # pyimgui reference for input text used here:
+            # https://pyimgui.readthedocs.io/en/latest/reference/imgui.core.html
+            changed, player_name = imgui.input_text('##Player', player_name)
+            
+            # Confirm the entered name and start the game
             if imgui.button("Start Game"):
                 score = 0
                 lives = 5
@@ -503,15 +651,10 @@ def main():
                 paddle.x = 0
                 load_level(current_level)
                 current_state = "PLAYING"
-            
-            if imgui.button("High Scores"):
-                print("High Scores to be implemented later...")
 
-            if imgui.button("Wipe High Scores"):
-                print("High Scores to be implemented later...")
-
-            if imgui.button("Quit"):
-                glfw.set_window_should_close(window, True)
+            # Return to the main menu
+            if imgui.button("Back to Main Menu"):
+                current_state = "MENU"
             
             imgui.end()
 
@@ -565,6 +708,46 @@ def main():
 
             # Draw the paddle
             paddle.draw_paddle()
+
+        # High scores loop
+        if current_state == "HIGH_SCORES":
+            # Set the window size and position
+            # It needs to be bigger than the default size to fit
+            # all the possible high scores
+            imgui.set_next_window_size(imgui.ImVec2(570, 570))
+            imgui.set_next_window_pos(imgui.ImVec2(15, 15))
+
+            imgui.begin("High Scores")
+            
+            # Draw text and separator for the high scores window
+            imgui.text("Top 10 High Scores:")
+            imgui.separator()
+
+            # Display a note if there are no high scores in the database
+            if (len(high_scores) == 0):
+                imgui.text("No high scores recorded!")
+            # Else, display the top 10 high scores
+            else:
+                # Scores are tuples, display by row
+                rank = 1
+                for row in high_scores:
+                    imgui.text(f"{rank}) {row[0]} | "
+                               f"Score: {row[1]} | "
+                               f"Level: {row[2]} | "
+                               f"Timestamp: {row[3]}")
+                    rank += 1
+
+            # Button to wipe all high scores from the database
+            if imgui.button("Wipe High Scores"):
+                delete_all_scores()
+                high_scores.clear()
+                print("All high scores removed from the database!")
+            
+            # Return to the main menu
+            if imgui.button("Back to Main Menu"):
+                current_state = "MENU"
+            
+            imgui.end()
 
         # Render ImGui GUI elements
         imgui.render()
